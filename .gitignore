@@ -1,0 +1,8 @@
+CodeDB/
+*.o
+*.log
+*.db
+*.suo
+*.ipch
+PiSpiFlash/.visualgdb/
+PiSpiFlash/.vs/
