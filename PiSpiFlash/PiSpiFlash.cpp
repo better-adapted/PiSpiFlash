@@ -55,8 +55,8 @@ typedef unsigned char 		byte;
 #define JEDEC_SPI_WRITE_ENABLE			0x06
 #define JEDEC_SPI_WRITE_DISABLE			0x04
 
-volatile uint32_t SPI_Soft_Delay_Reload_Slow = 600;
-volatile uint32_t SPI_Soft_Delay_Reload_Fast = 300;
+volatile uint32_t SPI_Soft_Delay_Reload_Slow = 200;
+volatile uint32_t SPI_Soft_Delay_Reload_Fast = 100;
 
 volatile uint32_t SPI_Soft_Delay_Reload = SPI_Soft_Delay_Reload_Fast;
 
@@ -661,16 +661,16 @@ int main(int argc, char *argv[])
 	char test1_filename[] = { "test1.bin" };
 	char rand_filename[] = { "rand.bin" };
 	
-	//chip_full_test(spi_port_t::CE0, "M45PE80", "Rand", rand_filename, file_root);
-	//chip_full_test(spi_port_t::CE0, "M45PE80", "Blank", blank_filename, file_root);
-	//chip_full_test(spi_port_t::CE0, "M45PE80", "test1", test1_filename, file_root);
+	chip_full_test(spi_port_t::CE0, "M45PE80", "Rand", rand_filename, file_root);
+	chip_full_test(spi_port_t::CE0, "M45PE80", "Blank", blank_filename, file_root);
+	chip_full_test(spi_port_t::CE0, "M45PE80", "test1", test1_filename, file_root);
 
-	//chip_full_test(spi_port_t::CE1, "AT25SF081B", "Rand", rand_filename, file_root);
-	//chip_full_test(spi_port_t::CE1, "AT25SF081B", "Blank", blank_filename, file_root);
-	//chip_full_test(spi_port_t::CE1, "AT25SF081B", "test1", test1_filename, file_root);
+	chip_full_test(spi_port_t::CE1, "AT25SF081B", "Rand", rand_filename, file_root);
+	chip_full_test(spi_port_t::CE1, "AT25SF081B", "Blank", blank_filename, file_root);
+	chip_full_test(spi_port_t::CE1, "AT25SF081B", "test1", test1_filename, file_root);
 	
-	Program_Chip_Cycle(spi_port_t::CE0, "M45PE80", "prog", test1_filename, file_root);
-	Program_Chip_Cycle(spi_port_t::CE1, "AT25SF081B", "prog", test1_filename, file_root);
+	//Program_Chip_Cycle(spi_port_t::CE0, "M45PE80", "prog", test1_filename, file_root);
+	//Program_Chip_Cycle(spi_port_t::CE1, "AT25SF081B", "prog", test1_filename, file_root);
 
 	SPI_IO_Disable_Bus_Drivers();
 	
