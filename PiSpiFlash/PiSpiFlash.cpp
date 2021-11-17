@@ -56,7 +56,7 @@ typedef unsigned char 		byte;
 #define JEDEC_SPI_WRITE_DISABLE			0x04
 
 volatile uint32_t SPI_Soft_Delay_Reload_Slow = 600;
-volatile uint32_t SPI_Soft_Delay_Reload_Fast = 200;
+volatile uint32_t SPI_Soft_Delay_Reload_Fast = 300;
 
 volatile uint32_t SPI_Soft_Delay_Reload = SPI_Soft_Delay_Reload_Fast;
 
@@ -461,17 +461,22 @@ void SPI_IO_CHIP_Copy_Buffer_To_File_Tripple_Check(const spi_port_t pPort,const 
 	byte *test2 = (byte*) malloc(pSize);
 	byte *test3 = (byte*) malloc(pSize);
 	
-	SPI_IO_Command_with_Address_Send(pPort,JEDEC_SPI_READ_DATA_BYTES, pStartAddress,&test1[0], pSize);
+	char message[200];
 	
-	cout << pTestName << "," << pTestSeq << ","<<  "chip tripple reading,first read done" << endl;
+	SPI_IO_Command_with_Address_Send(pPort,JEDEC_SPI_READ_DATA_BYTES, pStartAddress,&test1[0], pSize);
+	uint64_t test1_checksum = Get_Checksum(test1, pSize);
+	sprintf(message, ",test1_checksum:%016LX", test1_checksum);	
+	cout << pTestName << "," << pTestSeq << ","<<  "chip tripple reading,first read done" << message << endl;
 	
 	SPI_IO_Command_with_Address_Send(pPort,JEDEC_SPI_READ_DATA_BYTES, pStartAddress,&test2[0], pSize);
-	
-	cout << pTestName << "," << pTestSeq << ","<< "chip tripple reading,second read done" << endl;
+	uint64_t test2_checksum = Get_Checksum(test2, pSize);
+	sprintf(message, ",test2_checksum:%016LX", test2_checksum);	
+	cout << pTestName << "," << pTestSeq << ","<< "chip tripple reading,second read done" << message << endl;
 
 	SPI_IO_Command_with_Address_Send(pPort,JEDEC_SPI_READ_DATA_BYTES, pStartAddress,&test3[0], pSize);
-
-	cout << pTestName << "," << pTestSeq << ","<< "chip tripple reading,third read done" << endl;
+	uint64_t test3_checksum = Get_Checksum(test3, pSize);
+	sprintf(message, ",test3_checksum:%016LX", test3_checksum);
+	cout << pTestName << "," << pTestSeq << ","<< "chip tripple reading,third read done" << message << endl;
 
 	int res1 = memcmp(test1, test2, pSize);
 	int res2 = memcmp(test1, test3, pSize);
@@ -499,6 +504,29 @@ void SPI_IO_CHIP_Copy_Buffer_To_File_Tripple_Check(const spi_port_t pPort,const 
 	free(test3);
 }
 
+void Program_Chip_Cycle(const spi_port_t pPort, const char* pTestName, const char* pTestSeq, const char* program_data_filename, const char* file_root, const uint32_t pChipSizeBytes = 0x100000)
+{
+	SPI_IO_CHIP_ERASE_ALL_SECTORS(pTestName,pTestSeq,pPort);
+	
+	byte* write_buffer = (byte*) malloc(pChipSizeBytes);
+	char filename_temp[300];
+	sprintf(filename_temp, "%s/%s", file_root, program_data_filename);
+			
+	FILE *ptr = fopen(filename_temp, "rb");  // r for read, b for binary
+	fread(write_buffer, pChipSizeBytes, 1, ptr); // read 10 bytes to our buffer
+	fclose(ptr);
+			
+	char temp_message[200];
+	uint64_t checksum_prog_file = Get_Checksum(write_buffer, pChipSizeBytes);
+	sprintf(temp_message, "checksum_prog_file:0x%016LX", checksum_prog_file);
+			
+	cout << pTestName << "," << pTestSeq << "," << "Programming with :" << filename_temp << "," << temp_message << endl;					
+
+	SPI_IO_CHIP_WRITE_ALL_PAGES(pPort, pTestName, pTestSeq, JEDEC_SPI_WRITE_PAGES, write_buffer, pChipSizeBytes,nullptr);
+	
+	uint64_t checksum_prog_dump = 0;
+	SPI_IO_CHIP_Copy_Buffer_To_File_Tripple_Check(pPort,pTestName,pTestSeq, filename_temp, 0, pChipSizeBytes,&checksum_prog_dump);		
+}
 
 void chip_full_test(const spi_port_t pPort,const char* pTestName,const char* pTestSeq,const char* program_data_filename,const char* file_root,const uint32_t pChipSizeBytes=0x100000)
 {
@@ -630,16 +658,19 @@ int main(int argc, char *argv[])
 	
 	char file_root[] = "/home/pi/Desktop/bin_files";
 	char blank_filename[] = { "blank.bin" };
-	char test_filename[] = { "test1.bin" };
+	char test1_filename[] = { "test1.bin" };
 	char rand_filename[] = { "rand.bin" };
 	
 	//chip_full_test(spi_port_t::CE0, "M45PE80", "Rand", rand_filename, file_root);
 	//chip_full_test(spi_port_t::CE0, "M45PE80", "Blank", blank_filename, file_root);
-	chip_full_test(spi_port_t::CE0, "M45PE80", "Test", test_filename, file_root);
+	//chip_full_test(spi_port_t::CE0, "M45PE80", "test1", test1_filename, file_root);
 
 	//chip_full_test(spi_port_t::CE1, "AT25SF081B", "Rand", rand_filename, file_root);
 	//chip_full_test(spi_port_t::CE1, "AT25SF081B", "Blank", blank_filename, file_root);
-	//chip_full_test(spi_port_t::CE1, "AT25SF081B", "Test", test_filename, file_root);
+	//chip_full_test(spi_port_t::CE1, "AT25SF081B", "test1", test1_filename, file_root);
+	
+	Program_Chip_Cycle(spi_port_t::CE0, "M45PE80", "prog", test1_filename, file_root);
+	Program_Chip_Cycle(spi_port_t::CE1, "AT25SF081B", "prog", test1_filename, file_root);
 
 	SPI_IO_Disable_Bus_Drivers();
 	
