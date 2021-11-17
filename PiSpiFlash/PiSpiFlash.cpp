@@ -2,6 +2,8 @@
 #include <wiringPi.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
+
 
 using namespace std;
 
@@ -46,15 +48,13 @@ typedef unsigned char 		byte;
 #define JEDEC_SPI_READ_IDENTIFICATION	0x9F
 #define JEDEC_SPI_SECTOR_ERASE			0xD8
 
-#define JEDEC_SPI_PAGE_WRITE			0x0A
-
 #define JEDEC_SPI_READ_STATUS_REGISTER	0x05
 
 #define JEDEC_SPI_WRITE_ENABLE			0x06
 #define JEDEC_SPI_WRITE_DISABLE			0x04
 
-volatile uint32_t SPI_Soft_Delay_Reload_Slow = 400;
-volatile uint32_t SPI_Soft_Delay_Reload_Fast = 100;
+volatile uint32_t SPI_Soft_Delay_Reload_Slow = 600;
+volatile uint32_t SPI_Soft_Delay_Reload_Fast = 200;
 
 volatile uint32_t SPI_Soft_Delay_Reload = SPI_Soft_Delay_Reload_Fast;
 
@@ -147,26 +147,15 @@ void SPI_IO_Disable_Bus_Drivers()
 
 void SPI_IO_Open(const spi_port_t pPort)
 {
-	SPI_IO_CS(pPort,0);
-	
-	SPI_IO_Soft_Delay();
-	SPI_IO_SCK(0);
+	SPI_IO_CS(pPort,0);	
 	SPI_IO_Soft_Delay();
 }
 
 void SPI_IO_Close(const spi_port_t pPort)
-{
-	SPI_IO_Soft_Delay();
-	
-	SPI_IO_SCK(0);
-	
-	SPI_IO_Soft_Delay();
-	
-	SPI_IO_MOSI(1);
-	
-	SPI_IO_Soft_Delay();
-	
+{	
 	SPI_IO_CS(pPort,1);
+	SPI_IO_Soft_Delay();
+	SPI_IO_MOSI(1);	
 }
 
 
@@ -291,13 +280,13 @@ void SPI_IO_SECTOR_ERASE(const spi_port_t pPort, const uint32_t pAdr)
 	SPI_IO_Clock_Fast(); // SPI_IO_SECTOR_ERASE()
 }
 
-void SPI_IO_PAGE_WRITE(const spi_port_t pPort, const uint32_t pAdr,const byte* pBuffer,const uint32_t pSize=256)
+void SPI_IO_PAGE_WRITE(const spi_port_t pPort,const byte pCommand, const uint32_t pAdr,const byte* pBuffer,const uint32_t pSize=256)
 {
 	SPI_IO_Clock_Slow(); // SPI_IO_PAGE_WRITE()
 
 	SPI_IO_Open(pPort);
 	
-	SPI_IO_Raw_Write_Byte(JEDEC_SPI_PAGE_WRITE);
+	SPI_IO_Raw_Write_Byte(pCommand);
 	
 	SPI_IO_Raw_Write_Byte(pAdr>>16);
 	SPI_IO_Raw_Write_Byte(pAdr>>8);
@@ -333,8 +322,6 @@ void SPI_IO_WRITE_DISABLE(spi_port_t pPort)
 
 void SPI_IO_CHIP_ERASE_ALL_SECTORS(const spi_port_t pPort)
 {
-	SPI_IO_WRITE_ENABLE(pPort);
-	
 	byte status_temp = 0;
 	volatile uint32_t sector_address;
 		
@@ -343,6 +330,7 @@ void SPI_IO_CHIP_ERASE_ALL_SECTORS(const spi_port_t pPort)
 		sector_address = sector * 0x10000;
 		
 		SPI_IO_WRITE_ENABLE(pPort);
+		
 		SPI_IO_SECTOR_ERASE(pPort,sector_address);
 		
 		uint32_t sector_start = GetTickCount();
@@ -362,10 +350,10 @@ void SPI_IO_CHIP_ERASE_ALL_SECTORS(const spi_port_t pPort)
 		cout << temp_message << endl;
 	}
 		
-	SPI_IO_WRITE_DISABLE(spi_port_t::CE1);
+	SPI_IO_WRITE_DISABLE(pPort);
 }
 
-void SPI_IO_CHIP_WRITE_ALL_PAGES(const spi_port_t pPort,const byte* pBuffer,const uint32_t pSize,uint64_t* pChecksum=0)
+void SPI_IO_CHIP_WRITE_ALL_PAGES(const spi_port_t pPort,const byte pCommand,const byte* pBuffer,const uint32_t pSize,uint64_t* pChecksum=0)
 {
 	SPI_IO_WRITE_ENABLE(pPort);
 	
@@ -398,13 +386,15 @@ void SPI_IO_CHIP_WRITE_ALL_PAGES(const spi_port_t pPort,const byte* pBuffer,cons
 			if ((status_temp&0x02) == 0x02)
 			{
 				break;
-			}			
+			}
+			usleep(100);
 		}
 		
-		SPI_IO_PAGE_WRITE(pPort,page_address,&pBuffer[page_address],256);
-		
+		SPI_IO_PAGE_WRITE(pPort,pCommand,page_address,&pBuffer[page_address],256);
+				
 		uint32_t page_wr_start = GetTickCount();
 		uint32_t page_wr_stop = 0;
+		
 		while (page_wr_stop==0)
 		{			
 			status_temp = 0xFF;
@@ -412,15 +402,16 @@ void SPI_IO_CHIP_WRITE_ALL_PAGES(const spi_port_t pPort,const byte* pBuffer,cons
 			if ((status_temp&0x01) == 0)
 			{
 				page_wr_stop = GetTickCount();
-			}			
+			}
+			usleep(100);
 		}
 		
-		char temp_message[200];
-		sprintf(temp_message,"page_write @ %06X in %dms",page_address,page_wr_stop-page_wr_start);
-		cout << temp_message << endl;
+		//char temp_message[200];
+		//sprintf(temp_message,"page_write @ %06X in %dms",page_address,page_wr_stop-page_wr_start);
+		//cout << temp_message << endl;
 	}
 		
-	SPI_IO_WRITE_ENABLE(spi_port_t::CE1);
+	SPI_IO_WRITE_DISABLE(pPort);
 }
 		
 void SPI_IO_CHIP_Fast_Copy_To_File(const spi_port_t pPort,const char *filename,const uint32_t pStartAddress,const uint32_t pSize,uint64_t* pChecksum=0)
@@ -500,6 +491,134 @@ void SPI_IO_CHIP_Copy_Buffer_To_File_Tripple_Check(const spi_port_t pPort,const 
 	free(test3);
 }
 
+void M45PE80_full_test(char *filename)
+{
+	uint64_t checksum_inital = 0; /// 0xfffffffff00fffff = erased
+	uint64_t checksum_blank = 0; 
+	uint64_t checksum_post = 0;
+	uint64_t checksum_prog_file = 0;
+	uint64_t checksum_prog_dump = 0;
+	
+	spi_port_t Port  = spi_port_t::CE0;
+	
+	cout << "M45PE80_full_test(),start" << endl;
+		
+	if(0)
+	{
+		char temp_message[200];
+		SPI_IO_CHIP_Fast_Copy_To_File(Port, "/home/pi/Desktop/M45PE80_inital_read.bin", 0, 0x100000,&checksum_inital);
+		sprintf(temp_message,"checksum_inital:0x%016LX",checksum_inital);
+		cout << temp_message << endl;
+	}
+	
+	if (1)
+	{
+		SPI_IO_CHIP_ERASE_ALL_SECTORS(Port);
+	}
+	
+	if(1)
+	{
+		char temp_message[200];
+		SPI_IO_CHIP_Fast_Copy_To_File(Port, "/home/pi/Desktop/M45PE80_blank_check.bin", 0, 0x100000,&checksum_blank);
+		sprintf(temp_message,"checksum_blank:0x%016LX",checksum_blank);
+		cout << temp_message << endl;
+	}	
+	
+	
+	if (checksum_blank != 0xfffffffff00fffff)
+	{
+		cout << "M45PE80_full_test(),checksum_blank != 0xfffffffff00fffff" << endl;
+		return;
+	}
+	
+	
+	{
+		byte write_buffer[0x100000];
+		{
+			//char filename[] = { "/home/pi/Desktop/test1.bin" };	
+			//char filename[] = { "/home/pi/Desktop/rand_no_ff.bin" };
+			FILE *ptr = fopen(filename,"rb");  // r for read, b for binary
+			fread(write_buffer,sizeof(write_buffer),1,ptr); // read 10 bytes to our buffer
+			fclose(ptr);			
+		}
+
+		SPI_IO_CHIP_WRITE_ALL_PAGES(Port,0x02, write_buffer, sizeof(write_buffer),&checksum_prog_file);
+		char temp_message[200];
+		sprintf(temp_message,"checksum_prog_file:0x%016LX",checksum_prog_file);
+		cout << temp_message << endl;			
+	}
+
+	if(1)
+	{
+		char temp_message[200];
+		SPI_IO_CHIP_Copy_Buffer_To_File_Tripple_Check(Port, "/home/pi/Desktop/M45PE80_prog_dump.bin", 0, 0x100000,&checksum_prog_dump);
+		sprintf(temp_message,"checksum_prog_dump:0x%016LX",checksum_prog_dump);
+		cout << temp_message << endl;		
+	}
+	
+	cout << "M45PE80_full_test(),stop" << endl;
+}
+
+void AT25SF081B_full_test(char *filename)
+{
+	uint64_t checksum_inital = 0; /// 0xfffffffff00fffff = erased
+	uint64_t checksum_blank = 0; 
+	uint64_t checksum_post = 0;
+	uint64_t checksum_prog_file = 0;
+	uint64_t checksum_prog_dump = 0;
+	
+	spi_port_t Port  = spi_port_t::CE1;
+	
+	cout << "AT25SF081B_full_test(),start" << endl;
+	
+	if(1)
+	{
+		char temp_message[200];
+		SPI_IO_CHIP_Fast_Copy_To_File(Port, "/home/pi/Desktop/AT25SF081B_inital_read.bin", 0, 0x100000,&checksum_inital);
+		sprintf(temp_message,"checksum_inital:0x%016LX",checksum_inital);
+		cout << temp_message << endl;
+	}
+	
+	if (1)
+	{
+		SPI_IO_CHIP_ERASE_ALL_SECTORS(Port);
+	}
+	
+	if(1)
+	{
+		char temp_message[200];
+		SPI_IO_CHIP_Fast_Copy_To_File(Port, "/home/pi/Desktop/AT25SF081B_blank_check.bin", 0, 0x100000,&checksum_blank);
+		sprintf(temp_message,"checksum_blank:0x%016LX",checksum_blank);
+		cout << temp_message << endl;
+	}	
+	
+	{
+		byte write_buffer[0x100000];
+		{
+			//char filename[] = { "/home/pi/Desktop/test1.bin" };		
+			//char filename[] = { "/home/pi/Desktop/rand_no_ff.bin" };
+			FILE *ptr = fopen(filename,"rb");  // r for read, b for binary
+			fread(write_buffer,sizeof(write_buffer),1,ptr); // read 10 bytes to our buffer
+			fclose(ptr);			
+		}
+
+		SPI_IO_CHIP_WRITE_ALL_PAGES(Port,0x02, write_buffer, sizeof(write_buffer),&checksum_prog_file);
+		char temp_message[200];
+		sprintf(temp_message,"checksum_prog_file:0x%016LX",checksum_prog_file);
+		cout << temp_message << endl;			
+	}
+
+	if(1)
+	{
+		char temp_message[200];
+		SPI_IO_CHIP_Copy_Buffer_To_File_Tripple_Check(Port, "/home/pi/Desktop/AT25SF081B_prog_dump.bin", 0, 0x100000,&checksum_prog_dump);
+		sprintf(temp_message,"checksum_prog_dump:0x%016LX",checksum_prog_dump);
+		cout << temp_message << endl;		
+	}
+	
+	cout << "AT25SF081B_full_test(),stop" << endl;
+}
+
 int main(int argc, char *argv[])
 {
 	int setup_res = wiringPiSetupGpio();
@@ -515,6 +634,27 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 	
+	if(0)
+	{
+		byte write_buffer[0x100000];
+		memset(write_buffer, 0xFF, sizeof(write_buffer));
+		FILE *ptr = fopen("/home/pi/Desktop/blank.bin","wb");  // r for read, b for binary
+		fwrite(write_buffer,sizeof(write_buffer),1,ptr); // read 10 bytes to our buffer
+		fclose(ptr);			
+	}
+	
+	if(0)
+	{
+		byte write_buffer[0x100000];
+		for (int x = 0; x < sizeof(write_buffer); x++)
+		{
+			write_buffer[x] = rand();
+		}
+		FILE *ptr = fopen("/home/pi/Desktop/rand.bin","wb");  // r for read, b for binary
+		fwrite(write_buffer,sizeof(write_buffer),1,ptr); // read 10 bytes to our buffer
+		fclose(ptr);			
+	}	
+	
 	{
 		byte id_jedec_ce0[3] = { };
 		byte id_jedec_ce1[3] = { };
@@ -528,77 +668,19 @@ int main(int argc, char *argv[])
 		sprintf(temp_message,"id_jedec_ce1:%02X%02X%02X", id_jedec_ce1[0], id_jedec_ce1[1], id_jedec_ce1[2]);
 		cout << temp_message << endl;		
 	}
+	
+	char blank_filename[] = { "/home/pi/Desktop/blank.bin" };
+	char test_filename[] = { "/home/pi/Desktop/test1.bin" };
+	char rand_filename[] = { "/home/pi/Desktop/rand.bin" };
+	
+	AT25SF081B_full_test(rand_filename);
+	AT25SF081B_full_test(blank_filename);
+	AT25SF081B_full_test(test_filename);
+	
+	M45PE80_full_test(rand_filename);
+	M45PE80_full_test(blank_filename);
+	M45PE80_full_test(test_filename);
 
-	uint64_t ce0_checksum_inital = 0; /// 0xfffffffff00fffff = erased
-	uint64_t ce0_checksum_blank = 0; /// 0xfffffffff00fffff = erased	
-	uint64_t ce0_checksum_post = 0; /// 0xfffffffff00fffff = erased
-	uint64_t ce0_checksum_file = 0;
-	uint64_t ce0_checksum_prog_dump = 0;
-	
-	uint64_t ce1_checksum = 0;	
-	
-	if(1)
-	{
-		char temp_message[200];
-		SPI_IO_CHIP_Fast_Copy_To_File(spi_port_t::CE0, "/home/pi/Desktop/ce0_blank_check.bin", 0, 0x100000,&ce0_checksum_inital);
-		sprintf(temp_message,"ce0_checksum_inital:0x%016LX",ce0_checksum_inital);
-		cout << temp_message << endl;
-	}
-	
-	if (1)
-	{
-		SPI_IO_CHIP_ERASE_ALL_SECTORS(spi_port_t::CE0);
-	}
-	
-	if(1)
-	{
-		char temp_message[200];
-		SPI_IO_CHIP_Fast_Copy_To_File(spi_port_t::CE0, "/home/pi/Desktop/ce0_blank_check.bin", 0, 0x100000,&ce0_checksum_blank);
-		sprintf(temp_message,"ce0_checksum_blank:0x%016LX",ce0_checksum_blank);
-		cout << temp_message << endl;
-	}	
-	
-	//if (ce0_checksum_blank == 0xfffffffff00fffff)
-	{
-		byte write_buffer[0x100000];
-		{
-			char filename[] = { "/home/pi/Desktop/test1.bin" };		
-			FILE *ptr = fopen(filename,"rb");  // r for read, b for binary
-			fread(write_buffer,sizeof(write_buffer),1,ptr); // read 10 bytes to our buffer
-			fclose(ptr);			
-		}
-
-		SPI_IO_CHIP_WRITE_ALL_PAGES(spi_port_t::CE0, write_buffer, sizeof(write_buffer),&ce0_checksum_file);
-		char temp_message[200];
-		sprintf(temp_message,"ce0_checksum_file:0x%016LX",ce0_checksum_file);
-		cout << temp_message << endl;			
-	}
-
-	if(1)
-	{
-		char temp_message[200];
-		SPI_IO_CHIP_Copy_Buffer_To_File_Tripple_Check(spi_port_t::CE0, "/home/pi/Desktop/prog_dump.bin", 0, 0x100000,&ce0_checksum_prog_dump);
-		sprintf(temp_message,"ce0_checksum_prog_dump:0x%016LX",ce0_checksum_prog_dump);
-		cout << temp_message << endl;		
-	}
-
-	if(0)
-	{
-		char temp_message[200];
-		SPI_IO_CHIP_Fast_Copy_To_File(spi_port_t::CE0, "/home/pi/Desktop/ce0_blank_check.bin", 0, 0x100000,&ce0_checksum_post);
-		sprintf(temp_message,"ce0_checksum_post:0x%016LX",ce0_checksum_post);
-		cout << temp_message << endl;
-	}
-
-	if(0)
-	{
-		char temp_message[200];
-		SPI_IO_CHIP_Fast_Copy_To_File(spi_port_t::CE1, "/home/pi/Desktop/ce1_blank_check.bin", 0, 0x100000,&ce1_checksum);
-		sprintf(temp_message,"ce1_checksum:0x%016LX",ce1_checksum);
-		cout << temp_message << endl;	
-	}
-	
-	
 	SPI_IO_Disable_Bus_Drivers();
 	
 	cout << "Disabled Drivers" << endl;
