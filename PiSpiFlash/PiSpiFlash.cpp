@@ -53,6 +53,11 @@ typedef unsigned char 		byte;
 #define JEDEC_SPI_WRITE_ENABLE			0x06
 #define JEDEC_SPI_WRITE_DISABLE			0x04
 
+volatile uint32_t SPI_Soft_Delay_Reload_Slow = 400;
+volatile uint32_t SPI_Soft_Delay_Reload_Fast = 100;
+
+volatile uint32_t SPI_Soft_Delay_Reload = SPI_Soft_Delay_Reload_Fast;
+
 typedef enum
 {
 	NONE,CE0,CE1
@@ -66,6 +71,16 @@ uint32_t GetTickCount()
 	theTick  = ts.tv_nsec / 1000000;
 	theTick += ts.tv_sec * 1000;
 	return theTick;
+}
+
+void SPI_IO_Clock_Fast()
+{
+	SPI_Soft_Delay_Reload = SPI_Soft_Delay_Reload_Fast;
+}
+
+void SPI_IO_Clock_Slow()
+{
+	SPI_Soft_Delay_Reload = SPI_Soft_Delay_Reload_Slow;
 }
 
 void SPI_IO_CS(const spi_port_t pPort,const int pState)
@@ -97,7 +112,7 @@ int SPI_IO_MISO()
 
 void SPI_IO_Soft_Delay()
 {
-	volatile int dummy = 200;
+	volatile static uint32_t dummy =  SPI_Soft_Delay_Reload;
 	
 	while (dummy)
 	{
@@ -208,9 +223,10 @@ byte SPI_IO_Raw_Read_Byte()
 	return (RdPara);
 }
 
-void SPI_IO_Command_Send(const spi_port_t pPort,const byte pCommand,const uint32_t pAdr, byte *Rd_Data, const uint32_t rd_size)
+void SPI_IO_Command_with_Address_Send(const spi_port_t pPort,const byte pCommand,const uint32_t pAdr, byte *Rd_Data, const uint32_t rd_size)
 {
 	SPI_IO_Open(pPort);
+	
 	SPI_IO_Raw_Write_Byte(pCommand);   
 	SPI_IO_Raw_Write_Byte(pAdr>>16);
 	SPI_IO_Raw_Write_Byte(pAdr>>8);
@@ -229,6 +245,7 @@ void SPI_IO_Command_Send(const spi_port_t pPort,const byte pCommand,const uint32
 void SPI_READ_JEDEC(const spi_port_t pPort, byte* pBuffer)
 {
 	SPI_IO_Open(pPort);
+	
 	SPI_IO_Raw_Write_Byte(JEDEC_SPI_READ_IDENTIFICATION);   
 	
 	for (uint32_t x = 0; x < 3; x++)
@@ -242,6 +259,7 @@ void SPI_READ_JEDEC(const spi_port_t pPort, byte* pBuffer)
 void SPI_IO_READ_STATUS_REGISTER(const spi_port_t pPort, byte* pBuffer)
 {
 	SPI_IO_Open(pPort);
+	
 	SPI_IO_Raw_Write_Byte(JEDEC_SPI_READ_STATUS_REGISTER);
 	
 	pBuffer[0] = SPI_IO_Raw_Read_Byte();
@@ -258,6 +276,8 @@ void SPI_IO_SIMPLE_COMMAND(const spi_port_t pPort,const byte pCommand)
 
 void SPI_IO_SECTOR_ERASE(const spi_port_t pPort, const uint32_t pAdr)
 {
+	SPI_IO_Clock_Slow(); // SPI_IO_SECTOR_ERASE()
+	
 	SPI_IO_Open(pPort);
 	
 	SPI_IO_Raw_Write_Byte(JEDEC_SPI_SECTOR_ERASE);   
@@ -267,10 +287,14 @@ void SPI_IO_SECTOR_ERASE(const spi_port_t pPort, const uint32_t pAdr)
 	SPI_IO_Raw_Write_Byte(pAdr>>0);	
 	
 	SPI_IO_Close(pPort);
+	
+	SPI_IO_Clock_Fast(); // SPI_IO_SECTOR_ERASE()
 }
 
 void SPI_IO_PAGE_WRITE(const spi_port_t pPort, const uint32_t pAdr,const byte* pBuffer,const uint32_t pSize=256)
 {
+	SPI_IO_Clock_Slow(); // SPI_IO_PAGE_WRITE()
+
 	SPI_IO_Open(pPort);
 	
 	SPI_IO_Raw_Write_Byte(JEDEC_SPI_PAGE_WRITE);
@@ -285,19 +309,29 @@ void SPI_IO_PAGE_WRITE(const spi_port_t pPort, const uint32_t pAdr,const byte* p
 	}
 	
 	SPI_IO_Close(pPort);
+	
+	SPI_IO_Clock_Fast(); // SPI_IO_PAGE_WRITE()
 }
 
 void SPI_IO_WRITE_ENABLE(spi_port_t pPort)
 {
+	SPI_IO_Clock_Slow(); // SPI_IO_WRITE_ENABLE()
+	
 	SPI_IO_SIMPLE_COMMAND(pPort,JEDEC_SPI_WRITE_ENABLE);
+
+	SPI_IO_Clock_Fast(); // SPI_IO_WRITE_ENABLE()
 }
 
 void SPI_IO_WRITE_DISABLE(spi_port_t pPort)
 {
+	SPI_IO_Clock_Slow(); // SPI_IO_WRITE_DISABLE()
+	
 	SPI_IO_SIMPLE_COMMAND(pPort,JEDEC_SPI_WRITE_DISABLE);
+
+	SPI_IO_Clock_Fast(); // SPI_IO_WRITE_DISABLE()
 }
 
-void SPI_IO_ERASE_ALL_SECTORS(const spi_port_t pPort)
+void SPI_IO_CHIP_ERASE_ALL_SECTORS(const spi_port_t pPort)
 {
 	SPI_IO_WRITE_ENABLE(pPort);
 	
@@ -328,10 +362,10 @@ void SPI_IO_ERASE_ALL_SECTORS(const spi_port_t pPort)
 		cout << temp_message << endl;
 	}
 		
-	SPI_IO_WRITE_ENABLE(spi_port_t::CE1);
+	SPI_IO_WRITE_DISABLE(spi_port_t::CE1);
 }
 
-void SPI_IO_WRITE_ALL_PAGES(const spi_port_t pPort,const byte* pBuffer,const uint32_t pSize,uint64_t* pChecksum=0)
+void SPI_IO_CHIP_WRITE_ALL_PAGES(const spi_port_t pPort,const byte* pBuffer,const uint32_t pSize,uint64_t* pChecksum=0)
 {
 	SPI_IO_WRITE_ENABLE(pPort);
 	
@@ -354,8 +388,19 @@ void SPI_IO_WRITE_ALL_PAGES(const spi_port_t pPort,const byte* pBuffer,const uin
 	for (uint32_t page = 0; page < page_max; page++)
 	{
 		page_address = page * 0x100;
+
+
+		while (1)
+		{
+			status_temp = 0x00;
+			SPI_IO_WRITE_ENABLE(pPort);
+			SPI_IO_READ_STATUS_REGISTER(pPort,&status_temp);
+			if ((status_temp&0x02) == 0x02)
+			{
+				break;
+			}			
+		}
 		
-		SPI_IO_WRITE_ENABLE(pPort);
 		SPI_IO_PAGE_WRITE(pPort,page_address,&pBuffer[page_address],256);
 		
 		uint32_t page_wr_start = GetTickCount();
@@ -378,10 +423,10 @@ void SPI_IO_WRITE_ALL_PAGES(const spi_port_t pPort,const byte* pBuffer,const uin
 	SPI_IO_WRITE_ENABLE(spi_port_t::CE1);
 }
 		
-void SPI_IO_Copy_Buffer_To_File(const spi_port_t pPort,const char *filename,const uint32_t pStartAddress,const uint32_t pSize,uint64_t* pChecksum=0)
+void SPI_IO_CHIP_Fast_Copy_To_File(const spi_port_t pPort,const char *filename,const uint32_t pStartAddress,const uint32_t pSize,uint64_t* pChecksum=0)
 {
 	byte *test1 = (byte*) malloc(pSize);
-	SPI_IO_Command_Send(pPort,JEDEC_SPI_READ_DATA_BYTES, pStartAddress,&test1[0], pSize);
+	SPI_IO_Command_with_Address_Send(pPort,JEDEC_SPI_READ_DATA_BYTES, pStartAddress,&test1[0], pSize);
 	
 	if (pChecksum)
 	{
@@ -405,21 +450,21 @@ void SPI_IO_Copy_Buffer_To_File(const spi_port_t pPort,const char *filename,cons
 	free(test1);
 }
 
-void SPI_IO_Copy_Buffer_To_File_Tripple_Check(const spi_port_t pPort,const char *filename,const uint32_t pStartAddress,const uint32_t pSize,uint64_t* pChecksum=0)
+void SPI_IO_CHIP_Copy_Buffer_To_File_Tripple_Check(const spi_port_t pPort,const char *filename,const uint32_t pStartAddress,const uint32_t pSize,uint64_t* pChecksum=0)
 {
 	byte *test1 = (byte*) malloc(pSize);
 	byte *test2 = (byte*) malloc(pSize);
 	byte *test3 = (byte*) malloc(pSize);
 	
-	SPI_IO_Command_Send(pPort,JEDEC_SPI_READ_DATA_BYTES, pStartAddress,&test1[0], pSize);
+	SPI_IO_Command_with_Address_Send(pPort,JEDEC_SPI_READ_DATA_BYTES, pStartAddress,&test1[0], pSize);
 	
 	cout << "first read done" << endl;
 	
-	SPI_IO_Command_Send(pPort,JEDEC_SPI_READ_DATA_BYTES, pStartAddress,&test2[0], pSize);
+	SPI_IO_Command_with_Address_Send(pPort,JEDEC_SPI_READ_DATA_BYTES, pStartAddress,&test2[0], pSize);
 	
 	cout << "second read done" << endl;
 
-	SPI_IO_Command_Send(pPort,JEDEC_SPI_READ_DATA_BYTES, pStartAddress,&test3[0], pSize);
+	SPI_IO_Command_with_Address_Send(pPort,JEDEC_SPI_READ_DATA_BYTES, pStartAddress,&test3[0], pSize);
 
 	cout << "third read done" << endl;
 
@@ -457,8 +502,6 @@ void SPI_IO_Copy_Buffer_To_File_Tripple_Check(const spi_port_t pPort,const char 
 
 int main(int argc, char *argv[])
 {
-	char sz[] = "Hello, World!";	//Hover mouse over "sz" while debugging to see its contents
-	
 	int setup_res = wiringPiSetupGpio();
 	if (setup_res == 0)
 	{
@@ -497,20 +540,20 @@ int main(int argc, char *argv[])
 	if(1)
 	{
 		char temp_message[200];
-		SPI_IO_Copy_Buffer_To_File(spi_port_t::CE0, "/home/pi/Desktop/ce0_blank_check.bin", 0, 0x100000,&ce0_checksum_inital);
+		SPI_IO_CHIP_Fast_Copy_To_File(spi_port_t::CE0, "/home/pi/Desktop/ce0_blank_check.bin", 0, 0x100000,&ce0_checksum_inital);
 		sprintf(temp_message,"ce0_checksum_inital:0x%016LX",ce0_checksum_inital);
 		cout << temp_message << endl;
 	}
 	
 	if (1)
 	{
-		SPI_IO_ERASE_ALL_SECTORS(spi_port_t::CE0);
+		SPI_IO_CHIP_ERASE_ALL_SECTORS(spi_port_t::CE0);
 	}
 	
 	if(1)
 	{
 		char temp_message[200];
-		SPI_IO_Copy_Buffer_To_File(spi_port_t::CE0, "/home/pi/Desktop/ce0_blank_check.bin", 0, 0x100000,&ce0_checksum_blank);
+		SPI_IO_CHIP_Fast_Copy_To_File(spi_port_t::CE0, "/home/pi/Desktop/ce0_blank_check.bin", 0, 0x100000,&ce0_checksum_blank);
 		sprintf(temp_message,"ce0_checksum_blank:0x%016LX",ce0_checksum_blank);
 		cout << temp_message << endl;
 	}	
@@ -525,7 +568,7 @@ int main(int argc, char *argv[])
 			fclose(ptr);			
 		}
 
-		SPI_IO_WRITE_ALL_PAGES(spi_port_t::CE0, write_buffer, sizeof(write_buffer),&ce0_checksum_file);
+		SPI_IO_CHIP_WRITE_ALL_PAGES(spi_port_t::CE0, write_buffer, sizeof(write_buffer),&ce0_checksum_file);
 		char temp_message[200];
 		sprintf(temp_message,"ce0_checksum_file:0x%016LX",ce0_checksum_file);
 		cout << temp_message << endl;			
@@ -534,7 +577,7 @@ int main(int argc, char *argv[])
 	if(1)
 	{
 		char temp_message[200];
-		SPI_IO_Copy_Buffer_To_File_Tripple_Check(spi_port_t::CE0, "/home/pi/Desktop/prog_dump.bin", 0, 0x100000,&ce0_checksum_prog_dump);
+		SPI_IO_CHIP_Copy_Buffer_To_File_Tripple_Check(spi_port_t::CE0, "/home/pi/Desktop/prog_dump.bin", 0, 0x100000,&ce0_checksum_prog_dump);
 		sprintf(temp_message,"ce0_checksum_prog_dump:0x%016LX",ce0_checksum_prog_dump);
 		cout << temp_message << endl;		
 	}
@@ -542,7 +585,7 @@ int main(int argc, char *argv[])
 	if(0)
 	{
 		char temp_message[200];
-		SPI_IO_Copy_Buffer_To_File(spi_port_t::CE0, "/home/pi/Desktop/ce0_blank_check.bin", 0, 0x100000,&ce0_checksum_post);
+		SPI_IO_CHIP_Fast_Copy_To_File(spi_port_t::CE0, "/home/pi/Desktop/ce0_blank_check.bin", 0, 0x100000,&ce0_checksum_post);
 		sprintf(temp_message,"ce0_checksum_post:0x%016LX",ce0_checksum_post);
 		cout << temp_message << endl;
 	}
@@ -550,7 +593,7 @@ int main(int argc, char *argv[])
 	if(0)
 	{
 		char temp_message[200];
-		SPI_IO_Copy_Buffer_To_File(spi_port_t::CE1, "/home/pi/Desktop/ce1_blank_check.bin", 0, 0x100000,&ce1_checksum);
+		SPI_IO_CHIP_Fast_Copy_To_File(spi_port_t::CE1, "/home/pi/Desktop/ce1_blank_check.bin", 0, 0x100000,&ce1_checksum);
 		sprintf(temp_message,"ce1_checksum:0x%016LX",ce1_checksum);
 		cout << temp_message << endl;	
 	}
