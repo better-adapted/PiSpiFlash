@@ -46,19 +46,22 @@ typedef unsigned char 		byte;
 #define PI_RESET_MCU	25		// pin 26
 
 
-#define JEDEC_SPI_READ_DATA_BYTES		0x03
-#define JEDEC_SPI_READ_IDENTIFICATION	0x9F
-#define JEDEC_SPI_SECTOR_ERASE			0xD8
+#define JEDEC_SPI_READ_DATA_BYTES			0x03
+#define JEDEC_SPI_READ_IDENTIFICATION		0x9F
+#define JEDEC_SPI_SECTOR_ERASE				0xD8
 
+#define JEDEC_SPI_PAGE_4K_ERASE				0x20
 
-#define JEDEC_SPI_PAGE_4K_ERASE			0x20
+#define JEDEC_SPI_WRITE_PAGES				0x02
 
-#define JEDEC_SPI_WRITE_PAGES			0x02
+#define JEDEC_SPI_READ_STATUS_REGISTER		0x05
+#define JEDEC_SPI_READ_STATUS_REGISTER2		0x35
 
-#define JEDEC_SPI_READ_STATUS_REGISTER	0x05
+#define JEDEC_SPI_WRITE_STATUS_REGISTER		0x01
+#define JEDEC_SPI_WRITE_STATUS_REGISTER2	0x31
 
-#define JEDEC_SPI_WRITE_ENABLE			0x06
-#define JEDEC_SPI_WRITE_DISABLE			0x04
+#define JEDEC_SPI_WRITE_ENABLE				0x06
+#define JEDEC_SPI_WRITE_DISABLE				0x04
 
 string File_root = "/home/pi/Desktop/PiSpiFlash";
 string File_all_00 = File_root + "/all_zeros.bin";
@@ -312,6 +315,39 @@ void SPI_IO_READ_STATUS_REGISTER(const spi_port_t pPort, byte* pBuffer)
 	
 	pBuffer[0] = SPI_IO_Raw_Read_Byte();
 	
+	SPI_IO_Close(pPort);
+}
+
+void SPI_IO_READ_STATUS_REGISTER2(const spi_port_t pPort, byte* pBuffer)
+{
+	SPI_IO_Open(pPort);
+
+	SPI_IO_Raw_Write_Byte(JEDEC_SPI_READ_STATUS_REGISTER2);
+
+	pBuffer[0] = SPI_IO_Raw_Read_Byte();
+
+	SPI_IO_Close(pPort);
+}
+
+void SPI_IO_WRITE_STATUS_REGISTER(const spi_port_t pPort, byte pValue)
+{
+	SPI_IO_Open(pPort);
+
+	SPI_IO_Raw_Write_Byte(JEDEC_SPI_WRITE_STATUS_REGISTER);
+
+	SPI_IO_Raw_Write_Byte(pValue);
+
+	SPI_IO_Close(pPort);
+}
+
+void SPI_IO_WRITE_STATUS_REGISTER2(const spi_port_t pPort, byte pValue)
+{
+	SPI_IO_Open(pPort);
+
+	SPI_IO_Raw_Write_Byte(JEDEC_SPI_WRITE_STATUS_REGISTER2);
+
+	SPI_IO_Raw_Write_Byte(pValue);
+
 	SPI_IO_Close(pPort);
 }
 
@@ -708,8 +744,8 @@ void Program_Chip_Cycle_Sector_Erase_All(const spi_port_t pPort, const char* pTe
 
 	SPI_IO_CHIP_WRITE_ALL_PAGES(pPort, pTestName, pTestSeq, JEDEC_SPI_WRITE_PAGES, write_buffer, pChipSizeBytes,nullptr);
 	
-	//uint64_t checksum_prog_dump = 0;
-	//SPI_IO_CHIP_Copy_Buffer_To_File_Tripple_Check(pPort,pTestName,pTestSeq, filename_temp, 0, pChipSizeBytes,&checksum_prog_dump);		
+	uint64_t checksum_prog_dump = 0;
+	SPI_IO_CHIP_Copy_Buffer_To_File_Tripple_Check(pPort,pTestName,pTestSeq, filename_temp, 0, pChipSizeBytes,&checksum_prog_dump);		
 }
 
 void chip_full_test(const spi_port_t pPort,const char* pTestName,const char* pTestSeq,const char* program_data_filename,const char* file_root,const uint32_t pChipSizeBytes=0x100000)
@@ -784,51 +820,65 @@ void chip_full_test(const spi_port_t pPort,const char* pTestName,const char* pTe
 	{
 		char filename_temp[300];
 		sprintf(filename_temp,"%s/%s_%s_prog_dump.bin", file_root, pTestName,pTestSeq);
-		
-		SPI_IO_CHIP_Copy_Buffer_To_File_Tripple_Check(pPort,pTestName,pTestSeq, filename_temp, 0, pChipSizeBytes,&checksum_prog_dump);
 
-		char temp_message[200];
-		sprintf(temp_message,"checksum_prog_dump:0x%016LX",checksum_prog_dump);
-		cout << pTestName << "," << pTestSeq << "," << temp_message << endl;		
+SPI_IO_CHIP_Copy_Buffer_To_File_Tripple_Check(pPort, pTestName, pTestSeq, filename_temp, 0, pChipSizeBytes, &checksum_prog_dump);
+
+char temp_message[200];
+sprintf(temp_message, "checksum_prog_dump:0x%016LX", checksum_prog_dump);
+cout << pTestName << "," << pTestSeq << "," << temp_message << endl;
 	}
-	
+
 	cout << pTestName << "," << pTestSeq << "chip_full_test(),stop" << endl << endl;
 }
 
 void create_files()
-{	
-	if(0)
+{
+	if (0)
 	{
 		byte write_buffer[0x100000];
 		memset(write_buffer, 0x00, sizeof(write_buffer));
-		FILE *ptr = fopen(File_all_00.c_str(),"wb");  // r for read, b for binary
-		fwrite(write_buffer,sizeof(write_buffer),1,ptr); // read 10 bytes to our buffer
-		fclose(ptr);			
+		FILE* ptr = fopen(File_all_00.c_str(), "wb");  // r for read, b for binary
+		fwrite(write_buffer, sizeof(write_buffer), 1, ptr); // read 10 bytes to our buffer
+		fclose(ptr);
 	}
-	
-	if(0)
+
+	if (0)
 	{
 		byte write_buffer[0x100000];
 		memset(write_buffer, 0xFF, sizeof(write_buffer));
-		FILE *ptr = fopen(File_all_FF.c_str(),"wb");  // r for read, b for binary
-		fwrite(write_buffer,sizeof(write_buffer),1,ptr); // read 10 bytes to our buffer
-		fclose(ptr);			
+		FILE* ptr = fopen(File_all_FF.c_str(), "wb");  // r for read, b for binary
+		fwrite(write_buffer, sizeof(write_buffer), 1, ptr); // read 10 bytes to our buffer
+		fclose(ptr);
 	}
-	
-	if(0)
+
+	if (0)
 	{
 		byte write_buffer[0x100000];
 		for (int x = 0; x < sizeof(write_buffer); x++)
 		{
 			write_buffer[x] = rand();
 		}
-		FILE *ptr = fopen(File_rand.c_str(),"wb");  // r for read, b for binary
-		fwrite(write_buffer,sizeof(write_buffer),1,ptr); // read 10 bytes to our buffer
-		fclose(ptr);			
-	}	
+		FILE* ptr = fopen(File_rand.c_str(), "wb");  // r for read, b for binary
+		fwrite(write_buffer, sizeof(write_buffer), 1, ptr); // read 10 bytes to our buffer
+		fclose(ptr);
+	}
 }
 
-int main(int argc, char *argv[])
+
+void SPI_WAIT_FOR_FLASH_WRITE_DONE(const spi_port_t pPort)
+{
+	while (1)
+	{
+		byte status_temp = 0xFF;
+		SPI_IO_READ_STATUS_REGISTER(pPort, &status_temp);
+		if ((status_temp & 0x01) == 0)
+		{
+			return;
+		}
+	}
+}
+
+int main(int argc, char* argv[])
 {
 	cout << "Starting" << endl;
 	int setup_res = wiringPiSetupGpio();
@@ -843,28 +893,69 @@ int main(int argc, char *argv[])
 		SPI_IO_Disable_Bus_Drivers();
 		return -1;
 	}
-	
-	cout << "Waiting for 1s" << endl;
-	sleep(1);
-		
+
 	// create_files();
-	
-	
+
+
 	{
 		byte id_jedec_ce0[3] = { };
 		byte id_jedec_ce1[3] = { };
 		char temp_message[200];
-		
+
 		SPI_READ_JEDEC(spi_port_t::CE0, id_jedec_ce0);
 		SPI_READ_JEDEC(spi_port_t::CE1, id_jedec_ce1);
-	
+
 		SPI_READ_JEDEC(spi_port_t::CE0, id_jedec_ce0);
 		SPI_READ_JEDEC(spi_port_t::CE1, id_jedec_ce1);
-			
-		sprintf(temp_message,"id_jedec_ce0:%02X%02X%02X", id_jedec_ce0[0], id_jedec_ce0[1], id_jedec_ce0[2]);
-		cout << temp_message << endl;	
-		sprintf(temp_message,"id_jedec_ce1:%02X%02X%02X", id_jedec_ce1[0], id_jedec_ce1[1], id_jedec_ce1[2]);
-		cout << temp_message << endl;		
+
+		sprintf(temp_message, "id_jedec_ce0:%02X%02X%02X", id_jedec_ce0[0], id_jedec_ce0[1], id_jedec_ce0[2]);
+		cout << temp_message << endl;
+		sprintf(temp_message, "id_jedec_ce1:%02X%02X%02X", id_jedec_ce1[0], id_jedec_ce1[1], id_jedec_ce1[2]);
+		cout << temp_message << endl;
+	}
+
+	{
+		byte ce1_status_reg1 = 0;
+		byte ce1_status_reg2 = 0;
+		byte protect_bits = 0;
+
+		SPI_IO_READ_STATUS_REGISTER(spi_port_t::CE1, &ce1_status_reg1);
+		SPI_IO_READ_STATUS_REGISTER2(spi_port_t::CE1, &ce1_status_reg2);
+
+		// 7 SRPO
+		// 6 BP4
+		// 5 BP3
+		// 4 BP2
+		// 3 BP1
+		// 2 BP2
+		// 1 WEL
+		// 0 BSY
+
+		protect_bits = ce1_status_reg1 & 0xFC;
+		if (protect_bits != 0x00)
+		{
+			SPI_IO_WRITE_ENABLE(spi_port_t::CE1);
+			SPI_IO_WRITE_STATUS_REGISTER(spi_port_t::CE1, 0x02);
+			SPI_WAIT_FOR_FLASH_WRITE_DONE(spi_port_t::CE1);
+
+			SPI_IO_WRITE_ENABLE(spi_port_t::CE1);
+			SPI_IO_WRITE_STATUS_REGISTER2(spi_port_t::CE1, 0x00);
+			SPI_WAIT_FOR_FLASH_WRITE_DONE(spi_port_t::CE1);
+
+			SPI_IO_READ_STATUS_REGISTER(spi_port_t::CE1, &ce1_status_reg1);
+			SPI_IO_READ_STATUS_REGISTER2(spi_port_t::CE1, &ce1_status_reg2);
+
+			protect_bits = ce1_status_reg1 & 0xFC;
+
+			if (protect_bits == 0x00)
+			{
+				cout << "ce1 - cleared protecion bits passed" << endl;
+			}
+			else
+			{
+				cout << "ce1 - cleared protecion bits failed" << endl;
+			}
+		}
 	}
 	
 	
@@ -876,7 +967,7 @@ int main(int argc, char *argv[])
     //chip_full_test(spi_port_t::CE1, "AT25SF081B", "Blank", blank_filename, File_root.c_str());
 	//chip_full_test(spi_port_t::CE1, "AT25SF081B", "prog_org", "org.bin", File_root.c_str());
 	
-	//Program_Chip_Cycle_Sector_Erase_All(spi_port_t::CE0, "M45PE80", "prog", "org.bin", File_root.c_str());
+	Program_Chip_Cycle_Sector_Erase_All(spi_port_t::CE0, "M45PE80", "prog", "org.bin", File_root.c_str());
 	//Program_Chip_Cycle_Page_4k_Erase_All(spi_port_t::CE1, "AT25SF081B", "all_zeros", all_zeros_filename, file_root);
 	//Program_Chip_Cycle_Page_4k_Erase_All(spi_port_t::CE1, "AT25SF081B", "blank", blank_filename, file_root);
 	
