@@ -564,17 +564,7 @@ void SPI_IO_CHIP_WRITE_ALL_PAGES(const spi_port_t pPort,const char* pTestName,co
 	{
 		page_address = page * 0x100;
 
-		while (1)
-		{
-			status_temp = 0x00;
-			SPI_IO_WRITE_ENABLE(pPort);
-			SPI_IO_READ_STATUS_REGISTER(pPort,&status_temp);
-			if ((status_temp&0x02) == 0x02)
-			{
-				break;
-			}
-			usleep(100);
-		}
+		SPI_IO_WRITE_ENABLE(pPort);
 		
 		SPI_IO_PAGE_WRITE(pPort,pCommand,page_address,&pBuffer[page_address],256);
 		
@@ -719,8 +709,8 @@ void Program_Chip_Cycle_Page_4k_Erase_All(const spi_port_t pPort, const char* pT
 
 		SPI_IO_CHIP_WRITE_ALL_PAGES(pPort, pTestName, pTestSeq, JEDEC_SPI_WRITE_PAGES, write_buffer, pChipSizeBytes,nullptr);
 		
-		uint64_t checksum_prog_dump = 0;
-		SPI_IO_CHIP_Copy_Buffer_To_File_Tripple_Check(pPort,pTestName,pTestSeq, filename_copy_to, 0, pChipSizeBytes,&checksum_prog_dump);				
+		//uint64_t checksum_prog_dump = 0;
+		//SPI_IO_CHIP_Copy_Buffer_To_File_Tripple_Check(pPort,pTestName,pTestSeq, filename_copy_to, 0, pChipSizeBytes,&checksum_prog_dump);				
 	}
 }
 
@@ -744,8 +734,8 @@ void Program_Chip_Cycle_Sector_Erase_All(const spi_port_t pPort, const char* pTe
 
 	SPI_IO_CHIP_WRITE_ALL_PAGES(pPort, pTestName, pTestSeq, JEDEC_SPI_WRITE_PAGES, write_buffer, pChipSizeBytes,nullptr);
 	
-	uint64_t checksum_prog_dump = 0;
-	SPI_IO_CHIP_Copy_Buffer_To_File_Tripple_Check(pPort,pTestName,pTestSeq, filename_temp, 0, pChipSizeBytes,&checksum_prog_dump);		
+	//uint64_t checksum_prog_dump = 0;
+	//SPI_IO_CHIP_Copy_Buffer_To_File_Tripple_Check(pPort,pTestName,pTestSeq, filename_temp, 0, pChipSizeBytes,&checksum_prog_dump);		
 }
 
 void chip_full_test(const spi_port_t pPort,const char* pTestName,const char* pTestSeq,const char* program_data_filename,const char* file_root,const uint32_t pChipSizeBytes=0x100000)
@@ -833,7 +823,7 @@ cout << pTestName << "," << pTestSeq << "," << temp_message << endl;
 
 void create_files()
 {
-	if (0)
+	if (1)
 	{
 		byte write_buffer[0x100000];
 		memset(write_buffer, 0x00, sizeof(write_buffer));
@@ -842,7 +832,7 @@ void create_files()
 		fclose(ptr);
 	}
 
-	if (0)
+	if (1)
 	{
 		byte write_buffer[0x100000];
 		memset(write_buffer, 0xFF, sizeof(write_buffer));
@@ -851,7 +841,7 @@ void create_files()
 		fclose(ptr);
 	}
 
-	if (0)
+	if (1)
 	{
 		byte write_buffer[0x100000];
 		for (int x = 0; x < sizeof(write_buffer); x++)
@@ -894,9 +884,10 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 
-	// create_files();
+	create_files();
 
 
+	if(1)
 	{
 		byte id_jedec_ce0[3] = { };
 		byte id_jedec_ce1[3] = { };
@@ -914,6 +905,7 @@ int main(int argc, char* argv[])
 		cout << temp_message << endl;
 	}
 
+	if(0)
 	{
 		byte ce1_status_reg1 = 0;
 		byte ce1_status_reg2 = 0;
@@ -957,6 +949,27 @@ int main(int argc, char* argv[])
 			}
 		}
 	}
+
+	if (0)
+	{
+		byte ce1_status_reg1 = 0;
+		byte ce1_status_reg2 = 0;
+		byte protect_bits = 0;
+
+		SPI_IO_READ_STATUS_REGISTER(spi_port_t::CE1, &ce1_status_reg1);
+		SPI_IO_READ_STATUS_REGISTER2(spi_port_t::CE1, &ce1_status_reg2);
+
+		SPI_IO_WRITE_ENABLE(spi_port_t::CE1);
+		SPI_IO_WRITE_STATUS_REGISTER(spi_port_t::CE1, 0x78);
+		SPI_WAIT_FOR_FLASH_WRITE_DONE(spi_port_t::CE1);
+
+		SPI_IO_WRITE_ENABLE(spi_port_t::CE1);
+		SPI_IO_WRITE_STATUS_REGISTER2(spi_port_t::CE1, 0x00);
+		SPI_WAIT_FOR_FLASH_WRITE_DONE(spi_port_t::CE1);
+
+		SPI_IO_READ_STATUS_REGISTER(spi_port_t::CE1, &ce1_status_reg1);
+		SPI_IO_READ_STATUS_REGISTER2(spi_port_t::CE1, &ce1_status_reg2);
+	}
 	
 	
 	//chip_full_test(spi_port_t::CE0, "M45PE80", "Rand", rand_filename, File_root.c_str());
@@ -967,13 +980,12 @@ int main(int argc, char* argv[])
     //chip_full_test(spi_port_t::CE1, "AT25SF081B", "Blank", blank_filename, File_root.c_str());
 	//chip_full_test(spi_port_t::CE1, "AT25SF081B", "prog_org", "org.bin", File_root.c_str());
 	
-	Program_Chip_Cycle_Sector_Erase_All(spi_port_t::CE0, "M45PE80", "prog", "org.bin", File_root.c_str());
 	//Program_Chip_Cycle_Page_4k_Erase_All(spi_port_t::CE1, "AT25SF081B", "all_zeros", all_zeros_filename, file_root);
 	//Program_Chip_Cycle_Page_4k_Erase_All(spi_port_t::CE1, "AT25SF081B", "blank", blank_filename, file_root);
 	
-	Program_Chip_Cycle_Page_4k_Erase_All(spi_port_t::CE1, "AT25SF081B", "prog", "org.bin", File_root.c_str());
-
-	
+//	Program_Chip_Cycle_Sector_Erase_All(spi_port_t::CE0, "M45PE80", "prog", "all_FF.bin", File_root.c_str());
+//	Program_Chip_Cycle_Sector_Erase_All(spi_port_t::CE0, "M45PE80", "prog", "org.bin", File_root.c_str());
+	Program_Chip_Cycle_Page_4k_Erase_All(spi_port_t::CE1, "AT25SF081B", "prog", "ce0_prog_dump.bin", File_root.c_str());
 
 	if(0)
 	{
